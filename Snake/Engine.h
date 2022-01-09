@@ -5,6 +5,8 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <thread>
+#include <condition_variable>
 #include <Windows.h>
 #include <random>
 #include <conio.h>
@@ -17,7 +19,8 @@ class Engine
 	std::vector<std::string> map;
 	std::vector<std::unique_ptr<Objects>> objects;
 	std::string tmpStr;
-	std::mutex dataMutex;
+	std::mutex m;
+	std::condition_variable cv;
 	bool gameOver;
 	int frameRate = 50;
 	int score = 0;
@@ -28,7 +31,7 @@ class Engine
 	void draw();
 	void moveSnake();
 	void keyProcessor();
-	void checkGameOver(std::thread& keysThread);
+	void checkGameOver();
 	void checkMoving();
 	void generateEat();
 	void createObjects();

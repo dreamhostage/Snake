@@ -6,7 +6,7 @@ Engine::Engine()
 	srand(time(NULL));
 	tempX = 0;
 	tempY = 0;
-	gameOver = false;
+	gameOver = true;
 
 	createObjects();
 }
@@ -55,10 +55,17 @@ void Engine::createObjects()
 
 void Engine::parseObjects()
 {
+	int x = 0;
+	int y = 0;
+	char character = '\0';
 	// Move all objects to the map
 	for (int i = 0; i < objects.size(); ++i)
 	{
-		map[objects[i].get()->getX()][objects[i].get()->getY()] = objects[i].get()->getCharacter();
+		x = objects[i].get()->getX();
+		y = objects[i].get()->getY();
+		character = objects[i].get()->getCharacter();
+
+		map[x][y] = character;
 	}
 }
 
@@ -77,17 +84,15 @@ void Engine::draw()
 
 void Engine::run()
 {
-	gameMenu();
-	std::thread keysThread(&Engine::keyProcessor, this);
-	keysThread.detach();
-	while (!gameOver)
+	while (true)
 	{
+		gameMenu();
 		parseObjects();
 		draw();
 		std::this_thread::sleep_for(std::chrono::milliseconds(frameRate));
 		checkMoving();
 		moveSnake();
-		checkGameOver(keysThread);
+		checkGameOver();
 		system("cls");
 	}
 }
@@ -95,8 +100,9 @@ void Engine::run()
 void Engine::keyProcessor()
 {
 	// Detecting which button pressed
+	std::unique_lock<std::mutex> lk(m);
 	char button;
-	while (true)
+	while (!gameOver)
 	{
 		button = _getch();
 
@@ -131,11 +137,11 @@ void Engine::keyProcessor()
 		else if (button == 113)
 		{
 			gameOver = true;
-			system("cls");
 		}
 		FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
 		std::this_thread::sleep_for(std::chrono::milliseconds(frameRate * 2));
 	}
+	std::notify_all_at_thread_exit(cv, std::move(lk));
 }
 
 void Engine::moveSnake()
@@ -143,7 +149,7 @@ void Engine::moveSnake()
 	// Snake moving engine
 	for (int i = 0; i < objects.size(); ++i)
 	{
-		if (objects[i].get()->getCharacter() == '#')
+		if (objects[i].get()->getDirection() != Direction::statical)
 		{
 			// Borders checking
 			if (objects[i].get()->getX() > 1 && objects[i].get()->getX() < x - 2
@@ -191,11 +197,10 @@ void Engine::moveSnake()
 	}
 }
 
-void Engine::checkGameOver(std::thread& keysThread)
+void Engine::checkGameOver()
 {
 	if (gameOver)
 	{
-		TerminateThread(keysThread.native_handle(), 0);
 		system("cls");
 
 		std::cout << "######################################################################\n";
@@ -219,9 +224,16 @@ void Engine::checkGameOver(std::thread& keysThread)
 		std::cout << "#                                                                    #\n";
 		std::cout << "#                                                                    #\n";
 		std::cout << "######################################################################\n\n";
-		std::cout << "Please press any key to exit\n\n";
-		system("pause");
-		exit(0);
+		std::cout << "Please press any key to go main menu\n\n";
+
+		std::unique_lock<std::mutex> lk(m);
+		cv.wait(lk, [] { return true; });
+
+		map.clear();
+		objects.clear();
+		createObjects();
+		score = 0;
+		system("cls");
 	}
 }
 
@@ -240,7 +252,7 @@ void Engine::checkMoving()
 		}
 	}
 
-	// Check for eat
+	// Check for eat (eat always will be the last element)
 	if ((objects[0].get()->getX() == objects[objects.size() - 1].get()->getX() &&
 		objects[0].get()->getY() == objects[objects.size() - 1].get()->getY()))
 	{
@@ -255,7 +267,6 @@ void Engine::checkMoving()
 		// Generate new eat
 		generateEat();
 		++score;
-
 	}
 }
 
@@ -287,97 +298,104 @@ void Engine::generateEat()
 
 void Engine::gameMenu()
 {
-	char choise = '\0';
-
-mainMenu:
-
-	while (choise != '1' && choise != '2' && choise != '3' && choise != '4')
+	if (gameOver)
 	{
-		std::cout << "######################################################################\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                      M A I N  M E N U                              #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                       1 - START GAME                               #\n";
-		std::cout << "#                       2 - SETTINGS                                 #\n";
-		std::cout << "#                       3 - WARNINGS                                 #\n";
-		std::cout << "#                       4 - EXIT                                     #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "######################################################################\n\n";
-		std::cout << "Please press number:\n\n";
+		char choise = '\0';
 
-		choise = _getch();
+	mainMenu:
+
+		while (choise != '1' && choise != '2' && choise != '3' && choise != '4')
+		{
+			std::cout << "######################################################################\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                      M A I N  M E N U                              #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                       1 - START GAME                               #\n";
+			std::cout << "#                       2 - SETTINGS                                 #\n";
+			std::cout << "#                       3 - WARNINGS                                 #\n";
+			std::cout << "#                       4 - EXIT                                     #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "######################################################################\n\n";
+			std::cout << "Please press number:\n\n";
+
+			choise = _getch();
+			system("cls");
+		}
+
+		switch (choise)
+		{
+		case '1':
+			break;
+		case '2':
+			std::cout << "######################################################################\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                     S E T T I N G S                                #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                       W - MOVE UP                                  #\n";
+			std::cout << "#                       S - MOVE DOWN                                #\n";
+			std::cout << "#                       A - MOVE LEFT                                #\n";
+			std::cout << "#                       D - MOVE RIGHT                               #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                       Q - RESET GAME                               #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "######################################################################\n\n";
+			std::cout << "Please press any key to go back\n\n";
+			system("pause");
+			system("cls");
+			choise = '\0';
+			goto mainMenu;
+		case '3':
+			std::cout << "######################################################################\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                      W A R N I N G S !                             #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#               Please don't play a lot in this game!                #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#        This flickering can make you crazy after some time :)       #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "#                                                                    #\n";
+			std::cout << "######################################################################\n\n";
+			std::cout << "Please press any key to go back\n\n";
+			system("pause");
+			system("cls");
+			choise = '\0';
+			goto mainMenu;
+		case '4':
+			exit(0);
+		}
+
+		gameOver = false;
+		std::thread keysThread(&Engine::keyProcessor, this);
+		keysThread.detach();
+
 		system("cls");
 	}
-
-	switch (choise)
-	{
-	case '1':
-		break;
-	case '2':
-		std::cout << "######################################################################\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                     S E T T I N G S                                #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                       W - MOVE UP                                  #\n";
-		std::cout << "#                       S - MOVE DOWN                                #\n";
-		std::cout << "#                       A - MOVE LEFT                                #\n";
-		std::cout << "#                       D - MOVE RIGHT                               #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                       Q - EXIT                                     #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "######################################################################\n\n";
-		std::cout << "Please press any key to go back\n\n";
-		system("pause");
-		system("cls");
-		choise = '\0';
-		goto mainMenu;
-	case '3':
-		std::cout << "######################################################################\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                      W A R N I N G S !                             #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#               Please don't play a lot in this game!                #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#        This flickering can make you crazy after some time :)       #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "#                                                                    #\n";
-		std::cout << "######################################################################\n\n";
-		std::cout << "Please press any key to go back\n\n";
-		system("pause");
-		system("cls");
-		choise = '\0';
-		goto mainMenu;
-	case '4':
-		exit(0);
-	}
-
-	system("cls");
 }

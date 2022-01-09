@@ -15,6 +15,6 @@ public:
 	int& getX() override;
 	int& getY() override;
 	char getCharacter() override;
-	Direction getDirection() override { return Direction::up; };
+	Direction getDirection() override { return Direction::statical; };
 	virtual void setDirection(const Direction& direction) override {};
 };
